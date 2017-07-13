@@ -751,25 +751,27 @@ define([ 'jquery' ], $ => ({
 
 			}
 
-			// JQuery reference to the console log panel.
-			const logPanel = this[port].logPanelDOM;
+			const logPanel = this[port].logPanelDOM;  // JQuery reference to the console log panel
 			const logItem = this[port].logData[logLength - 1];
 
-			// Append the message or command onto the end of the respective port's log.
-			const msgHTML = this.buildMsgHTML(port, logItem);
+			const msgHTML = this.buildMsgHTML(port, logItem);  // Append the message or command onto the end of the respective port's log
 
-			// Add the message to the bottom the the console log.
-			logPanel.append(msgHTML);
+			if (msgHTML) {
 
-			const a = logPanel.scrollTop() + Number(logPanel.css('height').match(/[0-9]+/)[0]);
-			const b = logPanel.prop('scrollHeight') + 17.5;
-			const atBottom = b - a <= this.autoScrollThreshold;
+				if (/false/i.test(msgHTML))
+					debug.log('');
 
-			// Scroll to bottom of console log.
-			atBottom && logPanel.scrollTop(logPanel.prop('scrollHeight'));
+				logPanel.append(msgHTML);  // Add the message to the bottom the the console log
 
-			if (this[port].logData.length > this.maxLineLimit)  // If the console log is longer than the limit, reduce the length of the log
+				const a = logPanel.scrollTop() + Number(logPanel.css('height').match(/[0-9]+/)[0]);
+				const b = logPanel.prop('scrollHeight') + 17.5;
+				const atBottom = b - a <= this.autoScrollThreshold;
+				atBottom && logPanel.scrollTop(logPanel.prop('scrollHeight'));  // Scroll to bottom of console log
+
+				if (this[port].logData.length > this.maxLineLimit)  // If the console log is longer than the limit, reduce the length of the log
 				this.truncateLog(port);
+
+			}
 
 			if (Type === 'Command' || Type === 'MdiCommand') {  // Return the data that was just appended to the log
 
@@ -795,7 +797,7 @@ define([ 'jquery' ], $ => ({
 				debug.error(`Message type '${Type}' is undefined.`);
 
 			if (!this[port].msgShow[Type])  // If the style object says that this message should not be shown
-				return false;
+				return '';
 
 			// JQuery reference to the console log panel.
 			const logPanel = this[port].logPanelDOM;
@@ -808,7 +810,8 @@ define([ 'jquery' ], $ => ({
 			const domMsg = Msg.replace(/\n/g, '').replace(/\r/g, '').replace(/\\"/g, '\"');
 
 			// Build DOM element for the line number and left margin.
-			let msgHTML = `<span class="text-muted" style="font-size: 8px; margin-right: ${(Type === 'Command' || Type === 'MdiCommand') ? '3px' : '19px'}; margin-left: 0px;">${domLineNumber}</span>`;
+			let msgHTML = '<div class="gcode-line">';
+			msgHTML += `<span class="text-muted" style="font-size: 8px; margin-right: ${(Type === 'Command' || Type === 'MdiCommand') ? '3px' : '19px'}; margin-left: 0px;">${domLineNumber}</span>`;
 
 			if (Type === 'Command' || Type === 'MdiCommand') {  // If this is a command, build DOM elements for command
 
@@ -818,13 +821,15 @@ define([ 'jquery' ], $ => ({
 
 				msgHTML += `<span class="fa fa-check fa-fw verify-mark ${Id} ${this.verifyStyle[Status]}" style="font-size: 10px; margin-right: 3px;"></span>`;
 				msgHTML += `<${domTag} class="cmd ${domClass}">${domMsg}</${domTag}>`;
-				msgHTML += `<${domCommentTag} class="cmd-comment ${Id} ${domCommentClass}" style="margin-left: 6px;">${domComment}</${domCommentTag}><br />`;
+				msgHTML += `<${domCommentTag} class="cmd-comment ${Id} ${domCommentClass}" style="margin-left: 6px;">${domComment}</${domCommentTag}>`;
 
 			} else {  // If this is a message and not a command
 
-				msgHTML += `<${domTag} class="${domClass}">${domMsg}</${domTag}><br />`;  // Build DOM elements for message
+				msgHTML += `<${domTag} class="${domClass}">${domMsg}</${domTag}>`;  // Build DOM elements for message
 
 			}
+
+			msgHTML += '</div>'
 
 			return msgHTML;
 
@@ -990,7 +995,8 @@ define([ 'jquery' ], $ => ({
 		},
 		findItem(port, { Msg, PartMsg, Length, Id, Line, Type, Meta, MinAge, MaxAge, StatusCondition, Index, IndexMap, SearchFrom = 0, SearchBackwards = false }) {
 
-			return false;
+			if (!inDebugMode)
+				return false;
 
 			// Return logData item of matched command within the specified search space.
 			// Defaults to searching entire logData object, use IndexMap to narrow that search.
@@ -1033,13 +1039,11 @@ define([ 'jquery' ], $ => ({
 			if (typeof Index != 'undefined') {  // If the Index argument was given
 
 				debug.log('Index argument was given so not searching through the log for a match. Skiping to returning object data.');
-
 				matchFound = true;
 
 			} else if (!SearchBackwards) {  // If the Index argument was omitted, search the port's console log for a match
 
 				debug.log('Searching forwards through the log for a match (ie. old to recent).');
-
 				let init = 0;
 
 				for (let i = 0; i < IndexMap.Length; i++) {  // Iterate through the IndexMap and figure out at what element of IndexMap should be used to strar searching for a match from
@@ -1166,7 +1170,7 @@ define([ 'jquery' ], $ => ({
 
 			debug.groupCollapsed(`${port}${Comment ? ` - Comment: '${Comment}'` : ''}${Status ? ` - Status: ${Status}` : ''} - ${Msg !== undefined ? `Msg: ${Msg}` : (PartMsg !== undefined ? `PartMsg: ${PartMsg}` : (Length !== undefined ? `Length: ${Length}` : (Id !== undefined ? `Id: ${Id}` : (Line !== undefined ? `Line: ${Line}` : (Index !== undefined ? `Index: ${Index}` : `Type: ${Type}`)))))}`);
 			// debug.groupCollapsed(`Update ${ Status ? 'status' : 'comment' }: ${ Msg || PartMsg || Id || Line || Type }`);
-			debug.log(CSON.stringify(arguments));
+			inDebugMode && debug.log(CSON.stringify(arguments));
 
 			const { cmdMap, verifyMap, logData } = this[port];
 
@@ -1353,7 +1357,7 @@ define([ 'jquery' ], $ => ({
 
 			if (UpdateRelated && matchRelated && matchRelated.Port && this[matchRelated.Port]) {  // If the command has a related command in a port's log and that port is valid
 
-				debug.log(`Found related port:\n${CSON.stringify(matchRelated)}`);
+				inDebugMode && debug.log(`Found related port:\n${CSON.stringify(matchRelated)}`);
 
 				if (matchRelated.Id) {  // If there is a match Id
 
@@ -1421,6 +1425,7 @@ define([ 'jquery' ], $ => ({
 
 		Mousetrap.bind('ctrl+pageup', this.keyboardShortcuts.bind(this, 'ctrl+pageup'));      // Show device log to the left
 		Mousetrap.bind('ctrl+pagedown', this.keyboardShortcuts.bind(this, 'ctrl+pagedown'));  // Show device log to the right
+		Mousetrap.bind('ctrl+shift+1', this.portFeedstop.bind(this, []));  // Send feedstop to all open ports
 
 		this.initSettings();      // Load settings from cson files
 		this.initClickEvents();   // Initialize click events on buttons
@@ -1761,26 +1766,34 @@ define([ 'jquery' ], $ => ({
 
 				}
 
-				let elementItem = containerElement + panelItem;
-				marginSpacing += Number($(elementItem).css('margin-top').replace(/px/g, ''));
+				const $element = $(`${containerElement}${panelItem}`);
+				marginSpacing += Number($element.css('margin-top').replace(/px/g, ''));
 
 				if (panelIndex === setItem.length - 1) {  // Last element in array
 
-					marginSpacing += Number($(elementItem).css('margin-bottom').replace(/px/g, ''));
-					let panelHeight = containerHeight - (marginSpacing + panelSpacing);
+					marginSpacing += Number($element.css('margin-bottom').replace(/px/g, ''));
+					const panelHeight = `${containerHeight - (marginSpacing + panelSpacing)}px`;
+					const elementHeight = $element.css('height');
 
-					$(elementItem).css({ 'height': `${panelHeight}px` });  // Set the element's height
+					if (elementHeight !== panelHeight)
+						$element.css({ height: panelHeight });
 
 				} else {  // If this is not the last element in the array
 
-					panelSpacing += Number($(elementItem).css('height').replace(/px/g, ''));  // Read the element's height
+					panelSpacing += Number($element.css('height').replace(/px/g, ''));  // Read the element's height
 
 				}
 
 			});
 		});
 
-		$('#connection-widget div.console-log-panel div.panel-body div').width($('#connection-widget div.console-log-panel div.panel-body').width() - 10);
+		const $logPanelBody = $('#connection-widget div.console-log-panel div.panel-body');
+		const divWidth = $logPanelBody.find('div').width();
+		const panelWidth = $logPanelBody.width();
+
+		if (divWidth !== panelWidth - 10)
+			$logPanelBody.find('div').width($logPanelBody.width() - 10);
+
 		return true;
 
 	},
@@ -3285,14 +3298,16 @@ define([ 'jquery' ], $ => ({
 		const safePort = this.makePortSafe(P);
 		const [ refId ] = Id.split('-part');
 
+		publish('connection-widget/message-status', data);
+
 		let matchFound = false;
 
-		refId && ({ matchFound } = this.consoleLog.updateCmd(safePort, { Id: refId, Status: 'Completed', UpdateRelated: true }));
+		refId && ({ matchFound } = this.consoleLog.updateCmd(safePort, { Id: refId, Status: 'Completed', UpdateRelated: true }));  // Update the message status in the port log
 
 		if (matchFound)
 			return true;
 
-		refId && ({ matchFound } = this.consoleLog.updateCmd('SPJS', { Id: refId, Status: 'Completed' }));
+		refId && ({ matchFound } = this.consoleLog.updateCmd('SPJS', { Id: refId, Status: 'Completed' }));  // Update the message status in the SPJS log
 
 		if (matchFound)
 			return true;
@@ -3417,7 +3432,7 @@ define([ 'jquery' ], $ => ({
 		// Ex. { "P": "COM10", "D": "{"r":{"gc":"G0X0"},"f":[1,102,7]}\n" } <- from send text instead of json
 
 		const { P, D } = data;
-		const logMessage = JSON.stringify(data, null, ' ').replace(/\\\"/g, '"').replace(/\t/g, '    ');
+		// const logMessage = JSON.stringify(data, null, ' ').replace(/\\\"/g, '"').replace(/\t/g, '    ');
 
 		this.consoleLog.appendMsg('SPJS', { Msg: data, Type: 'RawPortData' });  // Add the message to the SPJS log
 
@@ -3625,6 +3640,11 @@ define([ 'jquery' ], $ => ({
 						debug.log('lineObj.r is an empty object.');
 						({ matchFound, matchIndex, matchLine } = this.consoleLog.updateCmd(port, { Length: rx, Status: 'Warning', Comment: Label, UpdateRelated: true }));
 
+					} else if (typeof lineObj.r === 'object' && typeof lineObj.r.n != 'undefined') {  // If a gcode number was received
+
+						const refMsg = `N${lineObj.r.n}`;
+						this.consoleLog.updateCmd(port, { PartMsg: refMsg, Status: 'Warning', Comment, Label, UpdateRelated: true });
+
 					} else if (typeof lineObj.r === 'object') {
 
 						debug.log('lineObj.r is an object.');
@@ -3716,7 +3736,7 @@ define([ 'jquery' ], $ => ({
 
 		const { Addr, Announce, Widget, JsonTag, DeviceId } = data;
 
-		debug.log(`SPJS -Cayenn-\n  Addr: ${JSON.stringify(Addr)}\n  Announce: ${Announce}\n  Widget: ${Widget}\n  JsonTag: ${JsonTag}\n  DeviceId: ${DeviceId}`);
+		inDebugMode && debug.log(`SPJS -Cayenn-\n  Addr: ${JSON.stringify(Addr)}\n  Announce: ${Announce}\n  Widget: ${Widget}\n  JsonTag: ${JsonTag}\n  DeviceId: ${DeviceId}`);
 
 		this.consoleLog.appendMsg('SPJS', { Msg: data, Type: 'Cayenn' });  // Add the message to the SPJS log
 
@@ -4053,6 +4073,12 @@ define([ 'jquery' ], $ => ({
 
 		}
 
+		for (let i = 0; i < cmdBuffer.length; i++) {
+
+			cmdBuffer[i].Msg = cmdBuffer[i].Msg.replace('\r', '');
+
+		}
+
 		debug.groupEnd();
 
 		this.dataSendBuffer[port] = [ ...this.dataSendBuffer[port], ...cmdBuffer ];  // Add the new messages to the end of the buffer
@@ -4117,22 +4143,63 @@ define([ 'jquery' ], $ => ({
 
 	},
 
-	portFeedstop(port) {
+	portFeedstop(data) {
 
 		const { portMeta, openPorts, waitQueueFlushOnFeedstop, waitCycleResumeOnFeedstop } = this.SPJS;
 
-		if (!openPorts || typeof openPorts[port] === 'undefined')  // If the port argument is invalid
+		if (typeof data == 'undefined')
+			return debug.error('Invalid data argument.');
+
+		let port = '';
+
+		if (data && typeof data == 'string') {  // If the data argument was passed a single port name (eg. 'COM7')
+
+			port = data;
+
+		} else if (data && Array.isArray(data) && data.length) {  // If the data argument was passed multiple port names as an array (eg. [ 'COM5', 'COM7', 'COM11' ])
+
+			const [ a, ...b ] = data;  // Shift the first element from the array into port
+			port = a;
+
+			b.length && this.portFeedstop(b);  // If there are elements left in the data array, recursively call this method
+
+		} else if (data && Array.isArray(data) && !data.length) {
+
+			this.portFeedstop(openPorts);  // Send feedstop to all open ports just to be safe
+			return debug.warn('The data argument is an empty array.');
+
+		}
+
+		if (port === '') {
+
+			this.portFeedstop(openPorts);  // Send feedstop to all open ports just to be safe
+			return debug.error('Port is an empty string.');
+
+		}
+
+		if (port === 'SPJS')  // If the port is the SPJS
+			return false;
+
+		if (!openPorts || !openPorts.includes(port)) {  // If the port argument is invalid
+
+			this.portFeedstop(openPorts);  // Send feedstop to all open ports just to be safe
 			return debug.error(`The port argument passed to the portFeedstop method is not valid.\n  port: '${port}'`);
 
-		// this.newportSendNoBuf(port, { Msg: '!' });  // Send feedhold command
-		this.newportSendJson(port, { Msg: '!\n' });
+		}
 
-		setTimeout(() => {
+		this.newportSendNoBuf(port, { Msg: '!' });  // Send feedhold command
+		// this.newportSendJson(port, { Msg: '!' });
 
-			// this.newportSendNoBuf(port, { Msg: '%' });  //Send queue flush command
-			this.newportSendJson(port, { Msg: '%\n' });
+		if (waitQueueFlushOnFeedstop) {
 
-		}, waitQueueFlushOnFeedstop);
+			setTimeout(() => {
+
+				this.newportSendNoBuf(port, { Msg: '%' });  //Send queue flush command
+				// this.newportSendJson(port, { Msg: '%' });
+
+			}, waitQueueFlushOnFeedstop);
+
+		}
 
 		// setTimeout(() => {
 		//
