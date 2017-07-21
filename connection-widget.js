@@ -489,13 +489,34 @@ define([ 'jquery' ], $ => ({
 		/**
 		 *  Distance from the bottom of the panel that the panel will still automatically scroll down on.
 		 *  @default Overwritten by settings cson file.
-		 *  @type {number}
+		 *  @type {Number}
 		 */
 		autoScrollThreshold: 50,
+		/**
+		 *  Delay between a port being opened and the watchdog checking to see that the port is responding.
+		 *  Set a value of zero (0) to disable the watchdog on port open.
+		 *  @default Overwritten by settings cson file.
+		 *  @type {Number}
+		 */
+		watchdogOnPortConnectDelay: 2000,
+		/**
+		 *  Delay between the watchdog checking that the port is responding and closing the port.
+		 *  Set a value of zero (0) to disable the closing of the port.
+		 *  @default Overwritten by settings cson file.
+		 *  @type {Number}
+		 */
+		watchdogPortCloseDelay: 3000,
+		/**
+		 *  Delay between closing the port and reopening the port in milliseconds [ms].
+		 *  Set a value of zero (0) to disable the reopening of the port.
+		 *  @default Overwritten by settings cson file.
+		 *  @type {Number}
+		 */
+		watchdogPortReopenDelay: 3000,
 		SPJS: {
 			// The logData object stores all the messages and commands added to the console log.
-			// A message would be { msg: '', type: '', line: '' }
-			// A command would be { msg: '', type: '', line: '', id: '', meta: '', status: '', time: '', comment: '' }
+			// A message would be { Msg: '', Type: '', Line: '' }
+			// A command would be { Msg: '', Type: '', Line: '', Id: '', Meta: [], Status: '', Time: '', Comment: [], Related: [] }
 			logData: [],
 			// The cmdMap object stores the index of all command messages in the logData object.
 			cmdMap: [],
@@ -769,7 +790,7 @@ define([ 'jquery' ], $ => ({
 				atBottom && logPanel.scrollTop(logPanel.prop('scrollHeight'));  // Scroll to bottom of console log
 
 				if (this[port].logData.length > this.maxLineLimit)  // If the console log is longer than the limit, reduce the length of the log
-				this.truncateLog(port);
+					this.truncateLog(port);
 
 			}
 
@@ -1420,8 +1441,10 @@ define([ 'jquery' ], $ => ({
 		subscribe(`/${this.id}/port-sendjson`, this, this.newportSendJson.bind(this));      // Send message directly to SPJS as 'sendjson { P: [port], Data: [{ D: [cmd], Id: [id] }] }' and add it to the respective port's log.
 		subscribe(`${this.id}/port-sendbuffered`, this, this.portSendBuffered.bind(this));
 		subscribe(`/${this.id}/port-feedstop`, this, this.portFeedstop.bind(this));         // Sends message to the given port to stop all motion on that device.
-
-		subscribe('gcode-buffer/control', this, this.gcodeBufferControl.bind(this));  // Control information about the buffering of gcode to the SPJS.
+		subscribe(`/${this.id}/port-feedhold`, this, this.portFeedhold.bind(this));  	    // Sends a feed hold '!' command to a specified port.
+		subscribe(`/${this.id}/port-feedresume`, this, this.portFeedresume.bind(this));     // Sends a feed resume '~' command to a specified port.
+		subscribe(`/${this.id}/port-queueflush`, this, this.portQueueFlush.bind(this));     // Sends a queue flush '%' command to a specified port.
+		subscribe('gcode-buffer/control', this, this.gcodeBufferControl.bind(this));        // Control information about the buffering of gcode to the SPJS.
 
 		Mousetrap.bind('ctrl+pageup', this.keyboardShortcuts.bind(this, 'ctrl+pageup'));      // Show device log to the left
 		Mousetrap.bind('ctrl+pagedown', this.keyboardShortcuts.bind(this, 'ctrl+pagedown'));  // Show device log to the right
@@ -1578,7 +1601,7 @@ define([ 'jquery' ], $ => ({
 		$(`#${this.id} .splist-panel table.serial-port-list`).on('click', 'tr', function (evt) {  // Click events for each port in the serial port list
 
 			const port = $(this).attr('evt-data');
-			const portMeta = that.SPJS.portMeta;
+			const { portMeta } = that.SPJS;
 
 			let Msg = '';
 
@@ -2829,24 +2852,26 @@ define([ 'jquery' ], $ => ({
 
 		debug.groupCollapsed(`Port Connected: ${port}`);
 		const that = this;
+		const { id, consoleLog } = this;
+		const { watchdogOnPortConnectDelay } = consoleLog;
 
-		if (typeof this.consoleLog[port] != 'undefined' && this.consoleLog.openLogs.indexOf(port) !== -1) {  // If this port is already initiated
+		if (typeof consoleLog[port] != 'undefined' && consoleLog.openLogs.indexOf(port) !== -1) {  // If this port is already initiated
 
-			debug.log(`portConnected was already called for this port.${gui.parseObject(this.consoleLog, 2)}`);
+			debug.log(`portConnected was already called for this port.${gui.parseObject(consoleLog, 2)}`);
 
 		} else {  // If this method was not called redundantly
 
-			$(`#${this.id} .splist .port-${port}`).removeClass('success warning');  // Remove any hilites on the port in the serial device list
-			$(`#${this.id} .splist .port-${port} .port-toggle-btn > span`).removeClass('fa-toggle-on').addClass('fa-toggle-off');  // Change the toggle-on button into a toggle-off button in the serial device list
+			$(`#${id} .splist .port-${port}`).removeClass('success warning');  // Remove any hilites on the port in the serial device list
+			$(`#${id} .splist .port-${port} .port-toggle-btn > span`).removeClass('fa-toggle-on').addClass('fa-toggle-off');  // Change the toggle-on button into a toggle-off button in the serial device list
 
-			if (port === this.consoleLog.activeLog)  // If this port's console log is visible
+			if (port === consoleLog.activeLog)  // If this port's console log is visible
 				this.consoleLogChangeView('SPJS');
 
-			$(`#${this.id} .console-log-panel .nav-tabs .list-tab-${port}`).remove();  // Remove the respective port's console log output <div> element
-			$(`#${this.id} .console-log-panel .panel-body .log-${port}`).remove();  // Remove the respective port's console log tab
+			$(`#${id} .console-log-panel .nav-tabs .list-tab-${port}`).remove();  // Remove the respective port's console log output <div> element
+			$(`#${id} .console-log-panel .panel-body .log-${port}`).remove();  // Remove the respective port's console log tab
 
-			$(`#${this.id} .splist .port-${port}`).addClass('success');  // Hilite the port green in the serial devices list
-			$(`#${this.id} .splist .port-${port} .port-toggle-btn > span`).removeClass('fa-toggle-off').addClass('fa-toggle-on');  // Change the toggle-off button into a toggle-on button in the serial devices list
+			$(`#${id} .splist .port-${port}`).addClass('success');  // Hilite the port green in the serial devices list
+			$(`#${id} .splist .port-${port} .port-toggle-btn > span`).removeClass('fa-toggle-off').addClass('fa-toggle-on');  // Change the toggle-off button into a toggle-on button in the serial devices list
 
 			// IDEA: Use .splice() to add this port to the openLogs array so it does not need to be sorted everytime and use .localCompare() to know where it should be added.  // Update and sort the openLogs object. Sort the SPJS element to the end of the array
 			this.consoleLog.openLogs.unshift(port);
@@ -2874,14 +2899,14 @@ define([ 'jquery' ], $ => ({
 
 				publish('/statusbar-widget/add', port, this.makePortUnSafe(port.replace(/fs-dev-fs-tty/i, '')), 'success', that.consoleLog.openLogs[i]);
 
-				$(`#${that.id} .console-log-panel .nav-tabs .list-tab-${that.consoleLog.openLogs[i]}`).before(consoleLogTabHtml);
-				$(`#${that.id} .console-log-panel .panel-body .log-${that.consoleLog.openLogs[i]}`).before(consoleLogOutputHtml);
+				$(`#${id} .console-log-panel .nav-tabs .list-tab-${that.consoleLog.openLogs[i]}`).before(consoleLogTabHtml);
+				$(`#${id} .console-log-panel .panel-body .log-${that.consoleLog.openLogs[i]}`).before(consoleLogOutputHtml);
 
 				break;
 
 			}
 
-			// Build the port log object (Must do this after building the log panel in the DOM so that the JQuery DOM reference can be made).
+			// Build the port log object (Must do this after building the log panel in the DOM so that the JQuery DOM reference can be made)
 			this.consoleLog[port] = {
 				logData: [],
 				cmdMap: [],
@@ -2908,6 +2933,16 @@ define([ 'jquery' ], $ => ({
 			else  // If this port's raw data buffer is already defined
 				this.parseRawPortData(port);  // Add the raw data to this port's log
 
+			if (watchdogOnPortConnectDelay) {  // If the watchdog on port connected is enabled
+
+				setTimeout(() => {
+
+					this.watchdogOnPortConnect(port);  // Check that the port is responding to commands
+
+				}, watchdogOnPortConnectDelay);
+
+			}
+
 		}
 
 		debug.groupEnd();
@@ -2916,6 +2951,98 @@ define([ 'jquery' ], $ => ({
 			this.portConnected(nextPort);  // Run the portConnected method for the next element in the port array
 
 		return true;
+
+	},
+	watchdogOnPortConnect(port) {
+
+		if (typeof port == 'undefined' || typeof this.consoleLog[port] == 'undefined')  // If the port argument is invalid
+			return debug.error('The port argument is invalid.');
+
+		const { consoleLog, SPJS } = this;
+		const { watchdogPortCloseDelay, watchdogPortReopenDelay } = consoleLog;
+		const { logData } = consoleLog[port];
+		const { Baud, Buffer } = SPJS.portMeta[port];
+		const unsafePort = this.makePortUnSafe(port);
+
+		let sentCount = 0;
+		let queuedCount = 0;
+
+		for (let i = 0; i < logData.length; i++) {
+
+			const { Msg, Type, Status } = logData[i];
+
+			if (Type === 'Command' || Type === 'MdiCommand') {  // If the message is a command
+
+				sentCount += 1;
+
+				if (Status === 'Complete')
+					return false;
+
+				else if (Status === 'Queued')
+					queuedCount += 1;
+
+			} else {  // If the message is from the port
+
+				return false;
+
+			}
+
+		}
+
+		if (sentCount > 1 && queuedCount === 1) {
+
+			this.newportSendNoBuf(port, { Msg: '%', IdPrefix: 'watchdog', Comment: 'WatchDog' });
+
+			if (watchdogPortCloseDelay) {  // If closing the port via the watchdog is enabled
+
+				setTimeout(() => {
+
+					const Msg = `close ${unsafePort}`;
+					this.newspjsSend({ Msg, IdPrefix: 'watchdog', Comment: 'WatchDog' });
+
+				}, watchdogPortCloseDelay);
+
+			}
+
+			if (watchdogPortCloseDelay && watchdogPortReopenDelay) {  // If reopening the port via the watchdog is enabled
+
+				setTimeout(() => {
+
+					const { wsState, openPorts, portMeta } = this.SPJS;
+
+					if (openPorts.includes(port))  // If the port is already opened again
+						return false;
+
+					if (wsState !== 'closed' && typeof portMeta[port] != 'undefined') {  // If the SPJS is not closed
+
+						const Msg = `open ${unsafePort} ${Baud} ${Buffer}`;
+						this.newspjsSend({ Msg, IdPrefix: 'watchdog', Comment: 'WatchDog' });
+
+					} else {  // If the spjs is closed
+
+						// setTimeout(() => {
+						//
+						// 	const { wsState, openPorts, portMeta } = this.SPJS;
+						//
+						// 	if (wsState === 'closed' || openPorts.includes(port) || typeof portMeta[port] == 'undefined')  // If the SPJS is closed or the port is already open
+						// 		return false;
+						//
+						// 	const Msg = `open ${unsafePort} ${Baud} ${Buffer}`;
+						// 	this.newspjsSend({ Msg, IdPrefix: 'watchdog', Comment: 'WatchDog' });
+						//
+						// }, watchdogPortReopenDelay * 2);
+
+						return false;
+
+					}
+
+				}, watchdogPortCloseDelay + watchdogPortReopenDelay);
+
+			}
+
+			return true;
+
+		}
 
 	},
 	portDisconnected(port) {  // The portDisconnected method handles all of the DOM and object updates required whenever a port is disconnected.
@@ -3917,6 +4044,9 @@ define([ 'jquery' ], $ => ({
 
 	gcodeBufferControl(data) {
 
+
+		const { dataSendBuffer } = this;
+		const { openPorts, sendFeedholdOnBufferStop, waitQueueFlushOnFeedstop, waitCycleResumeOnFeedstop } = this.SPJS;
 		debug.log(`got control data: '${data}'`);
 
 		if (data === 'pause') {  // User pressed pause button
@@ -3924,15 +4054,30 @@ define([ 'jquery' ], $ => ({
 			this.SPJS.userPauseBufferedSend = true;  // Pause buffering data to the SPJS
 			publish('gcode-buffer/control', 'user-paused');
 
+			for (i = 0; i < openPorts.length; i++) {
+
+				const port = openPorts[i];
+
+				if (port !== 'SPJS')
+					this.portFeedhold(openPorts[i]);
+
+			}
+
 		} else if (data === 'resume') {  // User pressed resume button
 
 			this.SPJS.userPauseBufferedSend = false;  // Resume buffering data to the SPJS
 			publish('gcode-buffer/control', 'user-resumed');
 
-		} else if (data === 'stop') {  // User pressed stop button
+			for (i = 0; i < openPorts.length; i++) {
 
-			const { dataSendBuffer } = this;
-			const { openPorts, sendFeedholdOnBufferStop, waitQueueFlushOnFeedstop, waitCycleResumeOnFeedstop } = this.SPJS;
+				const port = openPorts[i];
+
+				if (port !== 'SPJS')
+					this.portFeedresume(port);
+
+			}
+
+		} else if (data === 'stop') {  // User pressed stop button
 
 			this.SPJS.userPauseBufferedSend = false;
 			Object.keys(dataSendBuffer).forEach(key => (this.dataSendBuffer[key] = []));  // Clear all buffered data for each port
@@ -3940,15 +4085,16 @@ define([ 'jquery' ], $ => ({
 
 			if (sendFeedholdOnBufferStop) {
 
-				for (let i = 0; i < openPorts; i++) {  // For each open port
+				for (let i = 0; i < openPorts.length; i++) {  // For each open port
 
-					this.portFeedstop(openPorts[i]);  // Send feedstop to all ports
+					const port = openPorts[i];
+					this.portFeedstop(port);  // Send feedstop to all ports
 
-					setTimeout(() => {
-
-						this.newportSendJson(openPorts[i], { Msg: '~' });  // Send resume cycle command
-
-					}, waitQueueFlushOnFeedstop + waitCycleResumeOnFeedstop);
+					// setTimeout(() => {
+					//
+					// 	this.newportSendJson(openPorts[i], { Msg: '~' });  // Send resume cycle command
+					//
+					// }, waitQueueFlushOnFeedstop + waitCycleResumeOnFeedstop);
 
 				}
 
@@ -4170,10 +4316,11 @@ define([ 'jquery' ], $ => ({
 
 		}
 
-		if (port === '') {
+		if (typeof port == 'undefined' || port === '') {
 
 			this.portFeedstop(openPorts);  // Send feedstop to all open ports just to be safe
-			return debug.error('Port is an empty string.');
+			// return debug.error('Port is an empty string.');
+			return true;
 
 		}
 
@@ -4209,6 +4356,63 @@ define([ 'jquery' ], $ => ({
 		// }, waitQueueFlushOnFeedstop + waitCycleResumeOnFeedstop);
 
 	},
+	portFeedhold(port) {
+
+		const { openPorts } = this.SPJS;
+
+		if (port === 'SPJS')  // If the port is the SPJS
+			return false;
+
+		if (typeof port == 'undefined' || port === '') {
+
+			for (let i = 0; i < openPorts.length; i++)  // Send feedhold to all open ports just to be safe
+				this.portFeedhold(openPorts[i]);
+
+			return true;
+
+		}
+
+		this.newportSendNoBuf(port, { Msg: '!' });  // Send feedhold command
+
+	},
+	portFeedresume(port) {
+
+		const { openPorts } = this.SPJS;
+
+		if (port === 'SPJS')  // If the port is the SPJS
+			return false;
+
+		if (typeof port == 'undefined' || port === '') {
+
+			for (let i = 0; i < openPorts.length; i++)  // Send feed resume to all open ports
+				this.portFeedresume(openPorts[i]);
+
+			return true;
+
+		}
+
+		this.newportSendNoBuf(port, { Msg: '~' });  // Send feedhold command
+
+	},
+	portQueueFlush(port) {
+
+		const { openPorts } = this.SPJS;
+
+		if (port === 'SPJS')  // If the port is the SPJS
+			return false;
+
+		if (typeof port == 'undefined' || port === '') {
+
+			for (let i = 0; i < openPorts.length; i++)  // Send queue flush to all open ports
+				this.portQueueFlush(openPorts[i]);
+
+			return true;
+
+		}
+
+		this.newportSendNoBuf(port, { Msg: '%' });  // Send feedhold command
+
+	},
 
 	/**
 	 *  Sends messages to the SPJS.
@@ -4221,7 +4425,7 @@ define([ 'jquery' ], $ => ({
 	 *  @param  {String}    Comment           (opt) The comment that will be displayed beside the message in the console log.
 	 *  @param  {Object}    Related           [description]
 	 *  @param  {Array}     [Meta=[]]         [description]
-	 *  @param  {Number}    [recursionDepth=0]              Counter used internally by this method to keep track of recursion depth to prevent infinite looping.
+	 *  @param  {Number}    [recursionDepth=0]              Counter used internally by this method to keep track of recursion depth to prevent infinite loops.
 	 *  @return {String}    cmdId             The id that was used for the message in the console log.
 	 */
 	newspjsSend({ Msg, Id, IdPrefix, Type = 'Command', Status, Comment, Related, Meta = [], recursionDepth = 0 }) {
