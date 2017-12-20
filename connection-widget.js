@@ -130,6 +130,7 @@ define([ 'jquery' ], $ => ({
 		 *  @type {number}
 		 */
 		requestListDelay: 4000,
+		requestListAfterCorruptDelay: 800,
 		/**
 		 *  Enable automatic relaunching of the Serial Port JSON Server if this process did not launch it and no devices are connected.
 		 *  @default Overwritten by settings cson file.
@@ -212,7 +213,7 @@ define([ 'jquery' ], $ => ({
 			Buffer: 'default',
 			useReceivedFriendly: true,
 			autoConnectPort: false,
-			portMuted: false,
+			portMuted: true,
 			VidPids: [
 				{ Vid: '', Pid: '' }
 			]
@@ -1435,15 +1436,15 @@ define([ 'jquery' ], $ => ({
 		subscribe('/main/window-resize', this, this.resizeWidgetDom.bind(this));  // When the window resizes, look at updating the size of DOM elements.
 		subscribe('/main/widget-visible', this, this.visibleWidget.bind(this));   // If this widget is made visible, update the size of DOM elements.
 
-		subscribe(`/${this.id}/spjs-send`, this, this.newspjsSend.bind(this));    // Send a given message to the SPJS and add it to the console log so that it can be displayed as incomplete/complete.
-		subscribe(`/${this.id}/port-send`, this, this.newportSend.bind(this));    // Send message directly to SPJS as 'send [port] [cmd]' and add it to the respective port's log.
-		subscribe(`/${this.id}/port-sendnobuf`, this, this.newportSendNoBuf.bind(this));    // Send message directly to SPJS as 'sendnobuf [port] [cmd]' and add it to the respective port's log.
-		subscribe(`/${this.id}/port-sendjson`, this, this.newportSendJson.bind(this));      // Send message directly to SPJS as 'sendjson { P: [port], Data: [{ D: [cmd], Id: [id] }] }' and add it to the respective port's log.
-		subscribe(`${this.id}/port-sendbuffered`, this, this.portSendBuffered.bind(this));
-		subscribe(`/${this.id}/port-feedstop`, this, this.portFeedstop.bind(this));         // Sends message to the given port to stop all motion on that device.
-		subscribe(`/${this.id}/port-feedhold`, this, this.portFeedhold.bind(this));  	    // Sends a feed hold '!' command to a specified port.
-		subscribe(`/${this.id}/port-feedresume`, this, this.portFeedresume.bind(this));     // Sends a feed resume '~' command to a specified port.
-		subscribe(`/${this.id}/port-queueflush`, this, this.portQueueFlush.bind(this));     // Sends a queue flush '%' command to a specified port.
+		subscribe('/connection-widget/spjs-send', this, this.newspjsSend.bind(this));    // Send a given message to the SPJS and add it to the console log so that it can be displayed as incomplete/complete.
+		subscribe('/connection-widget/port-send', this, this.newportSend.bind(this));    // Send message directly to SPJS as 'send [port] [cmd]' and add it to the respective port's log.
+		subscribe('/connection-widget/port-sendnobuf', this, this.newportSendNoBuf.bind(this));    // Send message directly to SPJS as 'sendnobuf [port] [cmd]' and add it to the respective port's log.
+		subscribe('/connection-widget/port-sendjson', this, this.newportSendJson.bind(this));      // Send message directly to SPJS as 'sendjson { P: [port], Data: [{ D: [cmd], Id: [id] }] }' and add it to the respective port's log.
+		subscribe('connection-widget/port-sendbuffered', this, this.portSendBuffered.bind(this));
+		subscribe('/connection-widget/port-feedstop', this, this.portFeedstop.bind(this));         // Sends message to the given port to stop all motion on that device.
+		subscribe('/connection-widget/port-feedhold', this, this.portFeedhold.bind(this));  	   // Sends a feed hold '!' command to a specified port.
+		subscribe('/connection-widget/port-feedresume', this, this.portFeedresume.bind(this));     // Sends a feed resume '~' command to a specified port.
+		subscribe('/connection-widget/port-queueflush', this, this.portQueueFlush.bind(this));     // Sends a queue flush '%' command to a specified port.
 		subscribe('gcode-buffer/control', this, this.gcodeBufferControl.bind(this));        // Control information about the buffering of gcode to the SPJS.
 
 		Mousetrap.bind('ctrl+pageup', this.keyboardShortcuts.bind(this, 'ctrl+pageup'));      // Show device log to the left
@@ -1465,7 +1466,7 @@ define([ 'jquery' ], $ => ({
 
 		debug.log('Loading Settings from CSON files.');
 
-		CSON.parseCSONFile(`${this.id}/SPJS.cson`, (err, data) => {  // Synchronously load SPJS and console log settings
+		CSON.parseCSONFile(`${this.id}/SPJS.cson`, (err, data) => {  // Asynchronously load SPJS and console log settings
 
 			if (err)  // If there was an error reading the file
 				return debug.error(err);
@@ -1474,7 +1475,7 @@ define([ 'jquery' ], $ => ({
 
 		});
 
-		CSON.parseCSONFile(`${this.id}/Console_Log.cson`, (err, data) => {  // Synchronously load SPJS and console log settings
+		CSON.parseCSONFile(`${this.id}/Console_Log.cson`, (err, data) => {  // Asynchronously load SPJS and console log settings
 
 			if (err)  // If there was an error reading the file
 				return debug.error(err);
@@ -1483,7 +1484,7 @@ define([ 'jquery' ], $ => ({
 
 		});
 
-		CSON.parseCSONFile(`${this.id}/Device_Meta.cson`, (err, data) => {  // Synchronously load device meta settings
+		CSON.parseCSONFile(`${this.id}/Device_Meta.cson`, (err, data) => {  // Asynchronously load device meta settings
 
 			if (err)  // If there was an error reading the file
 				return debug.error(err);
@@ -1498,7 +1499,7 @@ define([ 'jquery' ], $ => ({
 
 		});
 
-		CSON.parseCSONFile(`${this.id}/Init_Scripts.cson`, (err, data) => {  // Synchronously load init and connect scripts
+		CSON.parseCSONFile(`${this.id}/Init_Scripts.cson`, (err, data) => {  // Asynchronously load init and connect scripts
 
 			if (err)  // If there was an error reading the file
 				return debug.error(err);
@@ -1540,7 +1541,7 @@ define([ 'jquery' ], $ => ({
 
 		debug.log('Loading Status Codes from cson file.');
 
-		CSON.parseCSONFile(`${this.id}/TinyG_Status_Codes.cson`, (err, result) => {  // Synchronously load tinyg status codes
+		CSON.parseCSONFile(`${this.id}/TinyG_Status_Codes.cson`, (err, result) => {  // Asynchronously load tinyg status codes
 
 			if (err)  // If there was an error reading the file
 				return debug.error(err);
@@ -1838,7 +1839,10 @@ define([ 'jquery' ], $ => ({
 
 	},
 
-	wsConnect() {  // This method creates a new WebSocket connection to the SPJS and is called by the '/main/all-widgets-loaded' subscribe line
+	/**
+	 *  Creates a new WebSocket connection to the SPJS and is called by the '/main/all-widgets-loaded' subscribe line.
+	 */
+	wsConnect() {
 
 		const socketUrl = 'ws://localhost:8989/ws';
 		// const socketUrl = 'ws://192.168.1.68:8888/ws';
@@ -1859,14 +1863,14 @@ define([ 'jquery' ], $ => ({
 		const { platform, architecture, os } = hostMeta;
 		const { launchGpioServerOnLinux } = this.SPJS;
 
-		if (platform === 'linux' && architecture === 'arm') {  // If on a Raspberry Pi
+		if (platform === 'linux') {  // If on a Linux Platform
 
 			// Launch the SPJS in max garbage collection mode
 			this.SPJS.go = spawn('lxterminal --command "sudo json_server/linux_arm/serial-port-json-server -gc max -allowexec"', [], { shell: true });
 			// this.SPJS.go = spawn('lxterminal --command "sudo json_server/linux_arm/serial-port-json-server -gc max -allowexec"', [], { shell: true });
 			// this.SPJS.go = spawn(`lxterminal --command "sudo serial-port-json-server-1.92_linux_arm/serial-port-json-server -gc max -allowexec"`, [], { shell: true });
 
-			if (launchGpioServerOnLinux) {
+			if (launchGpioServerOnLinux && architecture === 'arm') {  // If on a Raspberry Pi
 
 				// Launch the GPIO JSON server.
 				this.SPJS.gpio = spawn('lxterminal --command "sudo json_server/linux_arm/gpio-json-server"', [], { shell: true });
@@ -1968,7 +1972,11 @@ define([ 'jquery' ], $ => ({
 		debug.groupEnd();
 
 	},
-	onSpjsMessage(msg) {  // This method receives all messages from the SPJS and sends each message to it's respective method
+	/**
+	 *  All messages from the SPJS come here where they are distributed to each method which handles them.
+	 *  @param {String} msg Message from the SPJS.
+	 */
+	onSpjsMessage(msg) {
 
 		if (msg.match(/^\{/)) {  // If the message is a JSON object
 
@@ -2280,7 +2288,11 @@ define([ 'jquery' ], $ => ({
 		this.newspjsSend({ Msg: 'list' });
 
 	},
-	onSerialPorts(data) {  // This method parses the port list data received from the SPJS
+	/**
+	 *  This method parses the port list data received from the SPJS.
+	 *  @param {Object} data Port list data.
+	 */
+	onSerialPorts(data) {
 
 		const that = this;
 
@@ -2313,6 +2325,8 @@ define([ 'jquery' ], $ => ({
 			}
 		}
 
+		const { requestListAfterCorruptDelay } = this.SPJS;
+
 		// Check for errors in the portList (aka. no serial numbers, vid/pid).
 		// Linux os will show ports like '/dev/ttyAMA0' with no assocciated serial number.
 		if (hostMeta.platform !== 'linux' && !this.validifyPortList(dataObj)) {  // If any errors are present, discard data and get portList again
@@ -2324,7 +2338,7 @@ define([ 'jquery' ], $ => ({
 			// this.logCmdStatus('SPJS', {Cmd: 'list'}, 'Error');
 			this.consoleLog.updateCmd('SPJS', { Msg: 'list', IndexMap: this.consoleLog.SPJS.verifyMap, Status: 'Warning', Comment: 'Corrupt' });
 
-			setTimeout(() => this.newspjsSend({ Msg: 'list', Comment: 'Auto List' }), 500);
+			setTimeout(() => this.newspjsSend({ Msg: 'list', Comment: 'Auto List' }), requestListAfterCorruptDelay);
 
 			return false;
 
@@ -2437,27 +2451,23 @@ define([ 'jquery' ], $ => ({
 		return true;
 
 	},
-	validifyPortList(data) {  // This method checks that port list data received from the SPJS is not corrupted
+	/**
+	 *  This method checks that port list data received from the SPJS is not corrupted.
+	 *  @param  {object} data Port list data.
+	 *  @return {Boolean}
+	 */
+	validifyPortList(data) {
 
 		debug.log('Validating port list data.');
 
-		const that = this;
-		const requiredProp = [ 'SerialNumber', 'UsbPid', 'UsbVid' ];
+		for (let i in data) {  // Check that each port has the required properties
 
-
-		for (let i in data) {  // Check that each property in the requiredProp array has an associated value for each port in the portList object
-
-			for (let x = 0; x < requiredProp.length; x++) {
-
-				if (!data[i][requiredProp[x]])  // If port list data is corrupted
-					return false;
-
-			}
+			if (!data[i].SerialNumber && !data[i].UsbVid && !data[i].UsbPid)  // If port list data is corrupt
+				return false;
 
 		}
 
-		// Return 'true' to indicate that data is valid.
-		return true;
+		return true;  // Return true to indicate that the port list data is valid
 
 	},
 	buildPortListDiffs(data) {
@@ -2837,7 +2847,11 @@ define([ 'jquery' ], $ => ({
 		setTimeout(() => this.newspjsSend({ Msg: 'list' }), 250);
 
 	},
-	portConnected(port) {  // The portConnected method handles all the DOM and object updates required whenever a port is connected.
+	/**
+	 *  The portConnected method handles all the DOM and object updates required whenever a port is connected.
+	 *  @param {String} port Comm port that was opened.
+	 */
+	portConnected(port) {
 
 		// let port = '';
 		let nextPort = null;
@@ -3020,18 +3034,6 @@ define([ 'jquery' ], $ => ({
 
 					} else {  // If the spjs is closed
 
-						// setTimeout(() => {
-						//
-						// 	const { wsState, openPorts, portMeta } = this.SPJS;
-						//
-						// 	if (wsState === 'closed' || openPorts.includes(port) || typeof portMeta[port] == 'undefined')  // If the SPJS is closed or the port is already open
-						// 		return false;
-						//
-						// 	const Msg = `open ${unsafePort} ${Baud} ${Buffer}`;
-						// 	this.newspjsSend({ Msg, IdPrefix: 'watchdog', Comment: 'WatchDog' });
-						//
-						// }, watchdogPortReopenDelay * 2);
-
 						return false;
 
 					}
@@ -3045,7 +3047,11 @@ define([ 'jquery' ], $ => ({
 		}
 
 	},
-	portDisconnected(port) {  // The portDisconnected method handles all of the DOM and object updates required whenever a port is disconnected.
+	/**
+	 *  The portDisconnected method handles all of the DOM and object updates required whenever a port is disconnected.
+	 *  @param {String} port Comm port that was disconnected.
+	 */
+	portDisconnected(port) {
 
 		let nextPort = null;
 
@@ -3575,7 +3581,11 @@ define([ 'jquery' ], $ => ({
 			this.parseRawPortData(safePort);  // Parse the data in the raw data buffer
 
 	},
-	parseRawPortData(port) {  // This is a seperate method from onRawPortData so that it can be called after this port has been opened if raw data was received before it was opened
+	/**
+	 *  This is a seperate method from onRawPortData so that it can be called after this port has been opened if raw data was received before it was opened.
+	 *  @param {String} port Comm port of the data that is to be parsed.
+	 */
+	parseRawPortData(port) {
 
 		debug.groupCollapsed(`Parsing raw port data.\n  Port: ${port}`);
 
@@ -4011,7 +4021,13 @@ define([ 'jquery' ], $ => ({
 		debug.groupEnd();
 
 	},
-	makePortSafe(unsafePortName) {  // The linux platform gives port names like 'dev/ttyAMA0' which messes up the object names and the dom operations
+	/**
+	 *  This method makes port names safe to be displayed in the user interface.
+	 *  The linux platform gives port names like 'dev/ttyAMA0' which messes up the object names and the dom operations.
+	 *  @param  {String} unsafePortName The raw port name from the SPJS.
+	 *  @return {String} The port name that is safe to be displayed in the user interface.
+	 */
+	makePortSafe(unsafePortName) {
 
 		const portList = this.SPJS.portList;
 
@@ -4035,7 +4051,13 @@ define([ 'jquery' ], $ => ({
 		return safePortName;
 
 	},
-	makePortUnSafe(safePortName) {  // The linux platform gives port names like 'dev/ttyAMA0' which messes up the object names and the dom operations
+	/**
+	 *  This method converts safe port names into unsafe port names to be sent to the SPJS.
+	 *  The linux platform gives port names like 'dev/ttyAMA0' which messes up the object names and the dom operations.
+	 *  @param  {String} safePortName The safe port name.
+	 *  @return {String} The port name that can be sent to the SPJS.
+	 */
+	makePortUnSafe(safePortName) {
 
 		const unsafePortName = safePortName ? safePortName.replace(/fs-|-fs-/g, '/') : safePortName;
 		return unsafePortName;
@@ -4225,6 +4247,9 @@ define([ 'jquery' ], $ => ({
 
 		}
 
+		if (typeof this.dataSendBuffer[port] == 'undefined')
+		this.dataSendBuffer[port] = [];
+
 		debug.groupEnd();
 
 		this.dataSendBuffer[port] = [ ...this.dataSendBuffer[port], ...cmdBuffer ];  // Add the new messages to the end of the buffer
@@ -4293,8 +4318,11 @@ define([ 'jquery' ], $ => ({
 
 		const { portMeta, openPorts, waitQueueFlushOnFeedstop, waitCycleResumeOnFeedstop } = this.SPJS;
 
-		if (typeof data == 'undefined')
-			return debug.error('Invalid data argument.');
+		// if (typeof data == 'undefined')
+		// 	return debug.error('Invalid data argument.');
+
+		if (!openPorts.length)  // If there are no open ports
+			return false;
 
 		let port = '';
 
@@ -4327,7 +4355,7 @@ define([ 'jquery' ], $ => ({
 		if (port === 'SPJS')  // If the port is the SPJS
 			return false;
 
-		if (!openPorts || !openPorts.includes(port)) {  // If the port argument is invalid
+		if (!port || !openPorts || !openPorts.includes(port)) {  // If the port argument is invalid
 
 			this.portFeedstop(openPorts);  // Send feedstop to all open ports just to be safe
 			return debug.error(`The port argument passed to the portFeedstop method is not valid.\n  port: '${port}'`);
@@ -4360,7 +4388,7 @@ define([ 'jquery' ], $ => ({
 
 		const { openPorts } = this.SPJS;
 
-		if (port === 'SPJS')  // If the port is the SPJS
+		if (port === 'SPJS' || !openPorts.length)  // If the port is the SPJS or no ports are open
 			return false;
 
 		if (typeof port == 'undefined' || port === '') {
@@ -4713,7 +4741,12 @@ define([ 'jquery' ], $ => ({
 		return spjsId;  // Return true to indicate that the command was sent successfully
 
 	},
-	mdiSend(port, { Msg }) {  // Send a command comming from a MDI (Manual Data Input) from the user
+	/**
+	 *  Send a command to the SPJS from a MDI (Manual Data Input) from the user.
+	 *  @param {String} port The port to send the message to.
+	 *  @param {String} Msg  The message to be sent to the port.
+	 */
+	mdiSend(port, { Msg }) {
 
 		const that = this;
 		const portList = this.SPJS.portList;

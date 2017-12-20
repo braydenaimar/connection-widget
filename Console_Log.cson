@@ -5,7 +5,7 @@
 maxLineLimit: 800
 # Specifies the minimum number of lines to be displayed in the console log.
 # @type {Number}
-minLineLimit: 300
+minLineLimit: 500
 # Sets the time limit (ms) that an active command in the console log can be verified.
 # To prevent messages from being marked as stale, set this to 0.
 # @type {number}
